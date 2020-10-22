@@ -132,8 +132,8 @@ public class CountingGZIPInputStream extends CompressorInputStream implements In
     static final long TRAILER_SIZE = 8; // Always 8 bytes: http://www.zlib.org/rfc-gzip.html
     long currentHeaderSize = 0;
     private boolean closed = false;
-    public static final int DEFAULT_CONTENT = 30;
-    final byte[] content = new byte[DEFAULT_CONTENT]; // Should this be configurable?
+    public static final int DEFAULT_CONTENT_SIZE = 30;
+    final byte[] content;
     int contentPos = 0;
 
 
@@ -150,8 +150,7 @@ public class CountingGZIPInputStream extends CompressorInputStream implements In
      *
      * @throws IOException if the stream could not be created
      */
-    public CountingGZIPInputStream(final InputStream inputStream)
-            throws IOException {
+    public CountingGZIPInputStream(final InputStream inputStream) throws IOException {
         this(inputStream, false);
     }
 
@@ -176,11 +175,39 @@ public class CountingGZIPInputStream extends CompressorInputStream implements In
      * @throws IOException if the stream could not be created
      */
     public CountingGZIPInputStream(final InputStream inputStream,
-                                             final boolean decompressConcatenated)
+                                   final boolean decompressConcatenated)
             throws IOException {
+        this(inputStream, decompressConcatenated, DEFAULT_CONTENT_SIZE);
+    }
+    /**
+     * Constructs a new input stream that decompresses gzip-compressed data
+     * from the specified input stream.
+     * <p>
+     * If <code>decompressConcatenated</code> is {@code false}:
+     * This decompressor might read more input than it will actually use.
+     * If <code>inputStream</code> supports <code>mark</code> and
+     * <code>reset</code>, then the input position will be adjusted
+     * so that it is right after the last byte of the compressed stream.
+     * If <code>mark</code> isn't supported, the input position will be
+     * undefined.
+     *
+     * @param inputStream  the InputStream from which this object should
+     *                     be created of
+     * @param decompressConcatenated
+     *                     if true, decompress until the end of the input;
+     *                     if false, stop after the first .gz member
+     *
+     * @param entryContentSize the number of leading bytes to copy from the content to the created {@link Entry}.
+     * @throws IOException if the stream could not be created
+     */
+    public CountingGZIPInputStream(final InputStream inputStream,
+                                   final boolean decompressConcatenated,
+                                   int entryContentSize)
+            throws IOException {
+
         in = new PositionInputStream(inputStream.markSupported() ? inputStream : new BufferedInputStream(inputStream));
         countingStream = (PositionInputStream) in;
-
+        content = new byte[entryContentSize]; // Should this be configurable?
 /*        countingStream = new PositionInputStream(inputStream);
         // Mark support is strictly needed for concatenated files only,
         // but it's simpler if it is always available.
@@ -502,6 +529,16 @@ public class CountingGZIPInputStream extends CompressorInputStream implements In
             this.contentSnippet = contentSnippet;
         }
 
+        public String getASCIIContentSnippet() {
+            StringBuilder sb = new StringBuilder(contentSnippet.length * 3);
+            for (byte b : contentSnippet) {
+                int c = 0xFF & b;
+                if (c > 0 && c <= 127) {
+                    sb.append(Character.toString(c));
+                }
+            }
+            return sb.toString();
+        }
         public String getContentSnippet() {
             StringBuilder sb = new StringBuilder(contentSnippet.length * 3);
             for (byte b : contentSnippet) {
@@ -523,9 +560,8 @@ public class CountingGZIPInputStream extends CompressorInputStream implements In
 
         public String toString() {
             return String.format(Locale.ENGLISH, "Entry #%d: source(%,d->%,d), " +
-                                              "compressed=%,d bytes, uncompressed=%,d bytes, snippet=%s",
-                                 id, offset, offset + compressedSize,
-                                 compressedSize, uncompressedSize, getContentSnippet());
+                                              "compressed=%,d bytes, uncompressed=%,d bytes",
+                                 id, offset, offset + compressedSize, compressedSize, uncompressedSize);
         }
     }
 

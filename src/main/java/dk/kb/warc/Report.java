@@ -16,6 +16,8 @@ package dk.kb.warc;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  *
@@ -155,11 +157,12 @@ public class Report {
     }
 
     public String toString() {
+        boolean allOK = entries.stream().allMatch(Report::isLengthOK);
         return String.format(
                 Locale.ENGLISH,
-                "GzipReport(status=%s, #entries=%,d, compressed=%,d bytes, uncompressed=%,d bytes, exception=%s)",
-                status, entries.size(), getTotalCompressedSize(), getTotalUncompressedSize(), exception);
-
+                "GzipReport(status=%s, #entries=%,d, compressed=%,d bytes, uncompressed=%,d bytes, exception=%s, " +
+                "allEntriesValidWARC=%b)",
+                status, entries.size(), getTotalCompressedSize(), getTotalUncompressedSize(), exception, allOK);
     }
 
     public String toString(boolean verbose) {
@@ -168,9 +171,65 @@ public class Report {
         sb.append("Advice: ").append(getRecommendation()).append("\n");
         if (verbose) {
             sb.append("\nAll entries:");
-            entries.forEach(entry -> sb.append("\n").append(entry));
+            entries.forEach(entry -> sb.append("\n").append(entry).append(" ").append(debugWARCEntry(entry)));
+        }
+        sb.append("\n").append(toString());
+        if (!entries.stream().allMatch(Report::isLengthOK)) {
+            sb.append("Entries that are not WARC entries with valid Content-Length:\n");
+            entries.forEach(entry -> {
+                if (!isLengthOK(entry)) {
+                    sb.append("\n").append(entry).append(" ").append(debugWARCEntry(entry));
+                }
+            });
         }
         return sb.toString();
+    }
+
+    /**
+     * If the content looks like a WARC record, check that the reported size matches the stored.
+     * @param entry
+     * @return
+     */
+    private String debugWARCEntry(CountingGZIPInputStream.Entry entry) {
+        String content = entry.getASCIIContentSnippet();
+        Matcher matcher = WARC_SIZE_PATTERN.matcher(content);
+        if (!matcher.find()) {
+            return "Not a WARC entry: " + entry.getContentSnippet();
+        }
+        long statedLength;
+        try {
+            statedLength = Long.parseLong(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return "Looks like a WARC, but Content-Length has illegal content '" + matcher.group(1) + "'";
+        }
+        long headerSize = matcher.end()-matcher.start();
+        long expected = headerSize + statedLength + 4; // +4 because of trailing \r\n\r\n
+        if (expected == entry.uncompressedSize) {
+            return "Header size + Content-Length matches uncompressed length";
+        }
+        return String.format(
+                Locale.ENGLISH, "Header size %,d + Content-Length %,d + 4 = %,d, " +
+                                "which does not match uncompressed size %d: %s",
+                headerSize, statedLength, expected, entry.uncompressedSize, entry.getContentSnippet());
+    }
+    final static Pattern WARC_SIZE_PATTERN =
+            Pattern.compile("^WARC/.*?Content-Length: ([0-9]*).*?[\r][\n][\r][\n]", Pattern.DOTALL);
+
+    public static boolean isLengthOK(CountingGZIPInputStream.Entry entry) {
+        String content = entry.getASCIIContentSnippet();
+        Matcher matcher = WARC_SIZE_PATTERN.matcher(content);
+        if (!matcher.find()) {
+            return false;
+        }
+        long statedLength;
+        try {
+            statedLength = Long.parseLong(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        long headerSize = matcher.end()-matcher.start();
+        long expected = headerSize + statedLength + 4; // +4 because of trailing \r\n\r\n
+        return expected == entry.uncompressedSize;
     }
 
 }

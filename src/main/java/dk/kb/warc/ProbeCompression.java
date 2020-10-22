@@ -75,7 +75,7 @@ public class ProbeCompression {
      * @throws IOException if the file could not be read.
      */
     static Report analyse(String filename, InputStream input) throws IOException {
-        try (input ; CountingGZIPInputStream gis = new CountingGZIPInputStream(input, true)) {
+        try (input ; CountingGZIPInputStream gis = new CountingGZIPInputStream(input, true, 1000)) {
             try {
                 gis.empty();
             } catch (ZipException e) {
