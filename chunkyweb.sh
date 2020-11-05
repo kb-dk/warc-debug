@@ -7,6 +7,22 @@
 # Adapted from the solutions at
 # https://stackoverflow.com/questions/16640054/minimal-web-server-using-netcat
 #
+# Created by Toke Eskildsen with his Royal Danish Library-hat on, toes@kb.dk
+# Apache License, Version 2.0
+#
+
+#
+# Note: This is not a robust webserver. If stressed, it will not respond.
+#
+
+#
+# To harvest to a WARC file with wget:
+# 1) Start chunkyweb.sh and call
+# 2) wget --wait 1 --warc-file="chunkyweb_wget" --mirror "http://localhost:8090/"
+#    which should produce chunkyweb_wget.warc.gz
+# Note the "--wait 1": chunkyweb is fragile and should be treated gentle.
+#
+
 
 : ${PORT:="$1"}
 : ${PORT:="8090"}
